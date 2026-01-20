@@ -18,6 +18,20 @@ func TestHeaders_Parse(t *testing.T) {
 	assert.Equal(t, 23, n)
 	assert.False(t, done)
 
+	// Test: Valid 2 headers with the same key
+	headers = NewHeaders()
+	data = []byte("Host: localhost:42069\r\nhost: localhost:42070\r\n")
+	n, done, err = headers.Parse(data)
+	require.NoError(t, err)
+	assert.False(t, done)
+	assert.Equal(t, 23, n)
+
+	n, done, err = headers.Parse(data[n:])
+	require.NoError(t, err)
+	assert.False(t, done)
+	assert.Equal(t, 23, n)
+	assert.Equal(t, "localhost:42069,localhost:42070", headers["host"])
+
 	// Test: Invalid spacing header
 	headers = NewHeaders()
 	data = []byte("       Host : localhost:42069       \r\n\r\n")

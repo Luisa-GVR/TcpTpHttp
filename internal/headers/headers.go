@@ -58,7 +58,14 @@ func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 
 	bytesConsumed := len(beforeCRLF) + 2
 
-	h[key] = after
+	//Lets check if the header already exist
+	if _, exist := h[key]; exist {
+		h[key] += "," + after
+	} else {
+		h[key] = after
+
+	}
+
 	//Remember: The Parse function should only return done=true when the data starts with a CRLF, which can't happen when it finds a new key/value pair.
 
 	return bytesConsumed, false, nil
