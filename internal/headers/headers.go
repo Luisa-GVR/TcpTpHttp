@@ -32,17 +32,33 @@ func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 		return 0, false, errors.New("invalid header line")
 	}
 
-	//Lets ensure theres no space between colon and key
-	if strings.HasSuffix(before, " ") {
-		return 0, false, errors.New("invalid header")
+	// Only whitespace allowed is the suffix/leading whitespace before the field name
+	key := strings.TrimLeft(before, " \t")
+
+	// Any other type of white space is invalid
+	if strings.ContainsAny(key, " \t") {
+		return 0, false, errors.New("invalid header key")
 	}
-	//Now lets ensure theres no whitespace remaining before checking everything
-	before = strings.TrimSpace(before)
+	// lowercase everything
+	key = strings.ToLower(key)
+
+	/*
+		Last check on the key, must be from a-z (already lower-cased it), 0-9 and the following special characters
+		!, #, $, %, &, ', *, +, -, ., ^, _, `, |, ~
+	*/
+
+	allowedCharsString := "abcdefghijklmnopqrstuvwxyz0123456789!#$%&'*+-.^_`|~"
+	for _, char := range key {
+		if !strings.ContainsRune(allowedCharsString, char) {
+			return 0, false, errors.New("invalid header line")
+		}
+	}
+
 	after = strings.TrimSpace(after)
 
 	bytesConsumed := len(beforeCRLF) + 2
 
-	h[before] = after
+	h[key] = after
 	//Remember: The Parse function should only return done=true when the data starts with a CRLF, which can't happen when it finds a new key/value pair.
 
 	return bytesConsumed, false, nil
