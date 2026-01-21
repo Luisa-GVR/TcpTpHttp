@@ -29,6 +29,11 @@ func main() {
 		fmt.Println("- Method: " + toPrint.RequestLine.Method)
 		fmt.Println("- Target: " + toPrint.RequestLine.RequestTarget)
 		fmt.Println("- Version: " + toPrint.RequestLine.HttpVersion)
+		fmt.Println("Headers:")
+
+		for key, value := range toPrint.Headers {
+			fmt.Println("-  " + key + ": " + value)
+		}
 
 		//fmt.Printf("connection closed, oops!")
 
