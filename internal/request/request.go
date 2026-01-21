@@ -2,6 +2,7 @@ package request
 
 import (
 	"fmt"
+	"httpfromtcp/internal/headers"
 	"io"
 	"strings"
 )
@@ -11,10 +12,12 @@ type State int
 const (
 	Initialized State = iota
 	Done
+	requestStateParsingHeaders
 )
 
 type Request struct {
 	RequestLine RequestLine
+	Headers     headers.Headers
 	State       State
 }
 
@@ -112,7 +115,23 @@ func parseRequestLine(line string) (requestLine RequestLine, bytes int, err erro
 
 // Parser for packets
 func (r *Request) parse(data []byte) (int, error) {
+	totalBytesParsed := 0
+	for r.State != Done {
+		n, err := r.parseSingle(data[totalBytesParsed:])
+		if err != nil {
+			return 0, err
+		}
+		//needs more data
+		if n == 0 {
+			break
+		}
+		totalBytesParsed += n
+	}
+	return totalBytesParsed, nil
 
+}
+
+func (r *Request) parseSingle(data []byte) (int, error) {
 	if r.State == Initialized {
 		reqLine, bytesConsumed, err := parseRequestLine(string(data))
 		if err != nil {
@@ -123,12 +142,32 @@ func (r *Request) parse(data []byte) (int, error) {
 		}
 
 		r.RequestLine = reqLine
-		r.State = Done
+		r.State = requestStateParsingHeaders
 		return bytesConsumed, nil
+	} else if r.State == requestStateParsingHeaders {
+
+		if r.Headers == nil {
+			r.Headers = headers.NewHeaders()
+		}
+
+		n, done, err := r.Headers.Parse(data)
+
+		if err != nil {
+			return 0, err
+		}
+		if n == 0 {
+			return 0, nil
+		}
+
+		if done {
+			r.State = Done
+		}
+		return n, nil
 
 	} else if r.State == Done {
 		return 0, fmt.Errorf("error: trying to read data in a done state")
 	}
 
 	return 0, fmt.Errorf("error: unknown state")
+
 }

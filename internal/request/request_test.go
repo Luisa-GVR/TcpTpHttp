@@ -65,6 +65,59 @@ func TestRequestLineParse(t *testing.T) {
 	_, err = RequestFromReader(reader)
 
 	require.Error(t, err)
+
+	// Test: Standard Headers
+	reader = &chunkReader{
+		data:            "GET / HTTP/1.1\r\nHost: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n",
+		numBytesPerRead: 3,
+	}
+	r, err = RequestFromReader(reader)
+	require.NoError(t, err)
+	require.NotNil(t, r)
+	assert.Equal(t, "localhost:42069", r.Headers["host"])
+	assert.Equal(t, "curl/7.81.0", r.Headers["user-agent"])
+	assert.Equal(t, "*/*", r.Headers["accept"])
+
+	// Test: Empty Headers
+	reader = &chunkReader{
+		data:            "GET / HTTP/1.1\r\nHost:\r\n\r\n",
+		numBytesPerRead: 3,
+	}
+	r, err = RequestFromReader(reader)
+	require.NoError(t, err)
+	require.NotNil(t, r)
+	assert.Equal(t, "", r.Headers["host"])
+	assert.Equal(t, "1.1", r.RequestLine.HttpVersion)
+
+	// Test: Duplicate headers + case insensitive headers
+	dataInfo := []byte("GET / HTTP/1.1\r\nHost: www.example.com\r\nhost: www.example2.com\r\n\r\n")
+	reader = &chunkReader{
+		data:            string(dataInfo),
+		numBytesPerRead: 3,
+	}
+
+	r, err = RequestFromReader(reader)
+	require.NoError(t, err)
+	require.NotNil(t, r)
+	assert.Equal(t, "www.example.com,www.example2.com", r.Headers["host"])
+	assert.Equal(t, "1.1", r.RequestLine.HttpVersion)
+
+	// Test: Malformed Header
+	reader = &chunkReader{
+		data:            "GET / HTTP/1.1\r\nHost localhost:42069\r\n\r\n",
+		numBytesPerRead: 3,
+	}
+	r, err = RequestFromReader(reader)
+	require.Error(t, err)
+
+	// Test: Missing end of headers
+	reader = &chunkReader{
+		data:            "GET / HTTP/1.1\r\nHost: localhost:42069",
+		numBytesPerRead: 3,
+	}
+	r, err = RequestFromReader(reader)
+	require.Error(t, err)
+
 }
 
 type chunkReader struct {
