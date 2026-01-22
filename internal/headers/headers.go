@@ -70,3 +70,10 @@ func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 
 	return bytesConsumed, false, nil
 }
+
+func (h Headers) Get(key string) (value string, ok bool) {
+
+	key = strings.ToLower(key)
+	value, ok = h[key]
+	return value, ok
+}

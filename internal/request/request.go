@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"httpfromtcp/internal/headers"
 	"io"
+	"strconv"
 	"strings"
 )
 
@@ -13,12 +14,14 @@ const (
 	Initialized State = iota
 	Done
 	requestStateParsingHeaders
+	requestStateParsingBody
 )
 
 type Request struct {
 	RequestLine RequestLine
 	Headers     headers.Headers
 	State       State
+	Body        []byte
 }
 
 type RequestLine struct {
@@ -49,6 +52,7 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 		if err != nil {
 			if err == io.EOF {
 				if request.State != Done {
+					//This error should be enough for a content length being too short
 					return nil, fmt.Errorf("unexpected EOF before request was fully parsed")
 				}
 				break
@@ -160,14 +164,42 @@ func (r *Request) parseSingle(data []byte) (int, error) {
 		}
 
 		if done {
-			r.State = Done
+			r.State = requestStateParsingBody
 		}
 		return n, nil
 
+	} else if r.State == requestStateParsingBody {
+
+		contentLengthStr, ok := r.Headers.Get("Content-Length")
+
+		if !ok {
+			//no content length, so nothing to parse
+			r.State = Done
+			return 0, nil
+		}
+
+		contentLength, err := strconv.Atoi(contentLengthStr)
+		if err != nil {
+			return 0, fmt.Errorf("invalid Content-Length")
+		}
+
+		r.Body = data
+
+		if len(r.Body) == contentLength {
+			r.State = Done
+			fmt.Printf("Consumed the entire length of data")
+
+		}
+		if len(r.Body) > contentLength {
+			return 0, fmt.Errorf("body larger than Content-Length")
+		}
+
 	} else if r.State == Done {
 		return 0, fmt.Errorf("error: trying to read data in a done state")
+	} else {
+		return 0, fmt.Errorf("error: unknown state")
 	}
 
-	return 0, fmt.Errorf("error: unknown state")
+	return 0, nil
 
 }
