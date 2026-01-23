@@ -1,6 +1,8 @@
 package server
 
 import (
+	"bufio"
+	"httpfromtcp/internal/response"
 	"log"
 	"net"
 	"strconv"
@@ -65,14 +67,22 @@ func (s *Server) listen() {
 
 func (s *Server) handle(conn net.Conn) {
 
-	str := "HTTP/1.1 200 OK\r\n" +
-		"Content-Type: text/plain\r\n" +
-		"Content-Length: 12\r\n" +
-		"\r\n" +
-		"Hello World!"
-	bytes := []byte(str)
+	writer := bufio.NewWriter(conn)
 
-	conn.Write(bytes)
-	defer conn.Close()
+	response.WriteStatusLine(writer, response.Code200)
+
+	h := response.GetDefaultHeaders(0)
+
+	err := response.WriteHeaders(writer, h)
+	if err != nil {
+		return
+	}
+
+	err = writer.Flush()
+	if err != nil {
+		return
+	}
+
+	conn.Close()
 
 }
