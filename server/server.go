@@ -1,8 +1,6 @@
 package server
 
 import (
-	"bufio"
-	"bytes"
 	"httpfromtcp/internal/request"
 	"httpfromtcp/internal/response"
 	"io"
@@ -11,6 +9,8 @@ import (
 	"strconv"
 	"sync/atomic"
 )
+
+var badRequestHTML = []byte("<html>\n  <head>\n    <title>400 Bad Request</title>\n  </head>\n  <body>\n    <h1>Bad Request</h1>\n    <p>Your request honestly kinda sucked.</p>\n  </body>\n</html>")
 
 type Server struct {
 	isRunning atomic.Bool
@@ -75,45 +75,19 @@ func (s *Server) handle(conn net.Conn) {
 	defer conn.Close()
 
 	req, err := request.RequestFromReader(conn)
+	rw := response.NewWriter(conn)
+
 	if err != nil {
+		headers := response.GetDefaultHeaders(len(badRequestHTML))
+		headers.Set("content-type", "text/html")
+
+		rw.WriteStatusLine(response.Code400)
+		rw.WriteHeaders(headers)
+		rw.WriteBody([]byte(badRequestHTML))
 		return
 	}
-	var body bytes.Buffer
 
-	herr := s.handler(&body, req)
-
-	if herr == nil {
-		writer := bufio.NewWriter(conn)
-
-		newHeaders := response.GetDefaultHeaders(len(body.Bytes()))
-
-		err = response.WriteStatusLine(writer, response.Code200)
-		if err != nil {
-			return
-		}
-
-		err = response.WriteHeaders(writer, newHeaders)
-		if err != nil {
-			return
-		}
-
-		_, err = writer.Write(body.Bytes())
-		if err != nil {
-			return
-		}
-		err = writer.Flush()
-		if err != nil {
-			return
-		}
-
-	} else {
-		writer := bufio.NewWriter(conn)
-		err2 := WriteHandlerError(writer, herr)
-		if err2 != nil {
-			writer.Write([]byte(err2.Error()))
-		}
-		writer.Flush()
-	}
+	s.handler(rw, req)
 
 }
 
@@ -122,21 +96,24 @@ type HandlerError struct {
 	Message    string
 }
 
-type Handler func(w io.Writer, req *request.Request) *HandlerError
+type Handler func(w *response.Writer, req *request.Request)
 
+// WriteHandlerError Not being used, should be removed later
 func WriteHandlerError(writer io.Writer, herr *HandlerError) error {
 	if herr == nil {
 		return nil
 	}
 
-	if err := response.WriteStatusLine(writer, herr.StatusCode); err != nil {
+	rw := response.NewWriter(writer)
+
+	if err := rw.WriteStatusLine(herr.StatusCode); err != nil {
 		return err
 	}
 
 	body := herr.Message
 	headers := response.GetDefaultHeaders(len(body))
 
-	if err := response.WriteHeaders(writer, headers); err != nil {
+	if err := rw.WriteHeaders(headers); err != nil {
 		return err
 	}
 	if _, err := writer.Write([]byte(body)); err != nil {

@@ -4,7 +4,6 @@ import (
 	"httpfromtcp/internal/request"
 	"httpfromtcp/internal/response"
 	"httpfromtcp/server"
-	"io"
 	"log"
 	"os"
 	"os/signal"
@@ -15,21 +14,63 @@ const port = 42069
 
 func main() {
 
-	handler := func(w io.Writer, req *request.Request) *server.HandlerError {
+	handler := func(w *response.Writer, req *request.Request) {
+
 		switch req.RequestLine.RequestTarget {
+
 		case "/yourproblem":
-			return &server.HandlerError{
-				StatusCode: response.Code400,
-				Message:    "Your problem is not my problem\n",
-			}
+			body := []byte(`<html>
+							  <head>
+								<title>400 Bad Request</title>
+							  </head>
+							  <body>
+								<h1>Bad Request</h1>
+								<p>Your request honestly kinda sucked.</p>
+							  </body>
+							</html>`)
+
+			headers := response.GetDefaultHeaders(len(body))
+			headers.Set("content-type", "text/html")
+
+			w.WriteStatusLine(response.Code400)
+			w.WriteHeaders(headers)
+			w.WriteBody(body)
+
 		case "/myproblem":
-			return &server.HandlerError{
-				StatusCode: response.Code500,
-				Message:    "Woopsie, my bad\n",
-			}
+			body := []byte(`<html>
+							  <head>
+								<title>500 Internal Server Error</title>
+							  </head>
+							  <body>
+								<h1>Internal Server Error</h1>
+								<p>Okay, you know what? This one is on me.</p>
+							  </body>
+							</html>`)
+
+			headers := response.GetDefaultHeaders(len(body))
+			headers.Set("content-type", "text/html")
+
+			w.WriteStatusLine(response.Code500)
+			w.WriteHeaders(headers)
+			w.WriteBody(body)
+
 		default:
-			w.Write([]byte("All good, frfr\n"))
-			return nil
+			body := []byte(`<html>
+							  <head>
+								<title>200 OK</title>
+							  </head>
+							  <body>
+								<h1>Success!</h1>
+								<p>Your request was an absolute banger.</p>
+							  </body>
+							</html>`)
+
+			headers := response.GetDefaultHeaders(len(body))
+			headers.Set("content-type", "text/html")
+
+			w.WriteStatusLine(response.Code200)
+			w.WriteHeaders(headers)
+			w.WriteBody(body)
 		}
 	}
 

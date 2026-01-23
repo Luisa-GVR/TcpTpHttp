@@ -1,6 +1,7 @@
 package response
 
 import (
+	"errors"
 	"httpfromtcp/internal/headers"
 	"io"
 	"strconv"
@@ -14,7 +15,11 @@ const (
 	Code500
 )
 
-func WriteStatusLine(w io.Writer, statusCode StatusCode) error {
+func (w *Writer) WriteStatusLine(statusCode StatusCode) error {
+
+	if w.writerStatus != stateInit {
+		return errors.New("status line already written")
+	}
 
 	str := ""
 
@@ -29,11 +34,14 @@ func WriteStatusLine(w io.Writer, statusCode StatusCode) error {
 		str = "HTTP/1.1 200 OK\r\n"
 	}
 
-	_, err := w.Write([]byte(str))
+	_, err := w.out.Write([]byte(str))
 
 	if err != nil {
 		return err
 	}
+
+	w.status = statusCode
+	w.writerStatus = stateStatusWritten
 
 	return nil
 }
@@ -48,25 +56,62 @@ func GetDefaultHeaders(contentLen int) headers.Headers {
 	return h
 }
 
-func WriteHeaders(w io.Writer, headers headers.Headers) error {
-	contentLength, _ := headers.Get("content-length")
-	connection, _ := headers.Get("connection")
-	contentType, _ := headers.Get("content-type")
+func (w *Writer) WriteBody(p []byte) (int, error) {
 
-	if contentLength == "" {
-		contentLength = "0"
-	}
-	if connection == "" {
-		connection = "close"
-	}
-	if contentType == "" {
-		contentType = "text/plain"
+	if w.writerStatus != stateHeadersWritten {
+		return 0, errors.New("headers must be written before body")
 	}
 
-	fullStr := "content-length: " + contentLength + "\r\n" +
-		"connection: " + connection + "\r\n" +
-		"content-type: " + contentType + "\r\n\r\n"
+	n, err := w.out.Write(p)
+	if err != nil {
+		return 0, err
+	}
 
-	_, err := w.Write([]byte(fullStr))
-	return err
+	w.writerStatus = stateBodyWritten
+
+	return n, nil
+}
+
+func (w *Writer) WriteHeaders(headers headers.Headers) error {
+
+	if w.writerStatus != stateStatusWritten {
+		return errors.New("status line must be written before headers")
+	}
+
+	for key, value := range headers {
+
+		line := key + ":" + value + "\r\n"
+		if _, err := w.out.Write([]byte(line)); err != nil {
+			return err
+		}
+	}
+
+	if _, err := w.out.Write([]byte("\r\n")); err != nil {
+		return err
+	}
+
+	w.writerStatus = stateHeadersWritten
+	return nil
+}
+
+type WriterStatus int
+
+const (
+	stateInit WriterStatus = iota
+	stateStatusWritten
+	stateHeadersWritten
+	stateBodyWritten
+)
+
+type Writer struct {
+	writerStatus WriterStatus
+	out          io.Writer
+	status       StatusCode
+}
+
+func NewWriter(out io.Writer) *Writer {
+	return &Writer{
+		out:          out,
+		writerStatus: stateInit,
+	}
 }
