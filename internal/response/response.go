@@ -1,7 +1,6 @@
 package response
 
 import (
-	"errors"
 	"httpfromtcp/internal/headers"
 	"io"
 	"strconv"
@@ -27,7 +26,7 @@ func WriteStatusLine(w io.Writer, statusCode StatusCode) error {
 	case Code500:
 		str = "HTTP/1.1 500 Internal Server Error\r\n"
 	default:
-		str = ""
+		str = "HTTP/1.1 200 OK\r\n"
 	}
 
 	_, err := w.Write([]byte(str))
@@ -42,36 +41,32 @@ func WriteStatusLine(w io.Writer, statusCode StatusCode) error {
 func GetDefaultHeaders(contentLen int) headers.Headers {
 	h := make(headers.Headers)
 
-	h["Content-Length"] = strconv.Itoa(contentLen)
-	h["Connection"] = "close"
-	h["Content-Type"] = "text/plain"
+	h["content-length"] = strconv.Itoa(contentLen)
+	h["connection"] = "close"
+	h["content-type"] = "text/plain"
 
 	return h
 }
 
 func WriteHeaders(w io.Writer, headers headers.Headers) error {
+	contentLength, _ := headers.Get("content-length")
+	connection, _ := headers.Get("connection")
+	contentType, _ := headers.Get("content-type")
 
-	contentLength, ok := headers.Get("Content-Length")
-	if !ok {
-		return errors.New("missing Content-Length")
+	if contentLength == "" {
+		contentLength = "0"
+	}
+	if connection == "" {
+		connection = "close"
+	}
+	if contentType == "" {
+		contentType = "text/plain"
 	}
 
-	Connection, ok := headers.Get("Connection")
-	if !ok {
-		return errors.New("missing Connection")
-	}
-
-	ContentType, ok := headers.Get("Content-Type")
-	if !ok {
-		return errors.New("missing Content-Type")
-	}
-
-	fullStr := "Content-Length: " + contentLength + "\r\nConnection: " +
-		Connection + "\r\nContent-Type: " + ContentType + "\r\n\r\n"
+	fullStr := "content-length: " + contentLength + "\r\n" +
+		"connection: " + connection + "\r\n" +
+		"content-type: " + contentType + "\r\n\r\n"
 
 	_, err := w.Write([]byte(fullStr))
-	if err != nil {
-		return err
-	}
-	return nil
+	return err
 }

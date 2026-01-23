@@ -72,6 +72,10 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 			readToIndex -= consumed
 		}
 
+		if request.State == Done {
+			break
+		}
+
 	}
 
 	return &request, nil
@@ -149,13 +153,11 @@ func (r *Request) parseSingle(data []byte) (int, error) {
 		r.State = requestStateParsingHeaders
 		return bytesConsumed, nil
 	} else if r.State == requestStateParsingHeaders {
-
 		if r.Headers == nil {
 			r.Headers = headers.NewHeaders()
 		}
 
 		n, done, err := r.Headers.Parse(data)
-
 		if err != nil {
 			return 0, err
 		}
@@ -164,42 +166,41 @@ func (r *Request) parseSingle(data []byte) (int, error) {
 		}
 
 		if done {
-			r.State = requestStateParsingBody
+			contentLengthStr, ok := r.Headers.Get("Content-Length")
+			if !ok {
+				r.State = Done
+			} else {
+				cl, err := strconv.Atoi(contentLengthStr)
+				if err != nil || cl <= 0 {
+					r.State = Done
+				} else {
+					r.State = requestStateParsingBody
+				}
+			}
 		}
 		return n, nil
 
 	} else if r.State == requestStateParsingBody {
+		contentLengthStr, _ := r.Headers.Get("Content-Length")
+		contentLength, _ := strconv.Atoi(contentLengthStr)
 
-		contentLengthStr, ok := r.Headers.Get("Content-Length")
+		remaining := contentLength - len(r.Body)
+		available := len(data)
 
-		if !ok {
-			//no content length, so nothing to parse
-			r.State = Done
-			return 0, nil
+		toRead := available
+		if toRead > remaining {
+			toRead = remaining
 		}
 
-		contentLength, err := strconv.Atoi(contentLengthStr)
-		if err != nil {
-			return 0, fmt.Errorf("invalid Content-Length")
-		}
-
-		r.Body = data
+		r.Body = append(r.Body, data[:toRead]...)
 
 		if len(r.Body) == contentLength {
 			r.State = Done
-			fmt.Printf("Consumed the entire length of data")
-
 		}
-		if len(r.Body) > contentLength {
-			return 0, fmt.Errorf("body larger than Content-Length")
-		}
+		return toRead, nil
 
 	} else if r.State == Done {
-		return 0, fmt.Errorf("error: trying to read data in a done state")
-	} else {
-		return 0, fmt.Errorf("error: unknown state")
+		return 0, nil
 	}
-
-	return 0, nil
-
+	return 0, fmt.Errorf("error: unknown state")
 }
