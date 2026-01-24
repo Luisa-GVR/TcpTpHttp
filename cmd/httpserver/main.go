@@ -4,9 +4,12 @@ import (
 	"httpfromtcp/internal/request"
 	"httpfromtcp/internal/response"
 	"httpfromtcp/server"
+	"io"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 )
 
@@ -16,9 +19,9 @@ func main() {
 
 	handler := func(w *response.Writer, req *request.Request) {
 
-		switch req.RequestLine.RequestTarget {
+		switch {
 
-		case "/yourproblem":
+		case strings.HasPrefix(req.RequestLine.RequestTarget, "/yourproblem"):
 			body := []byte(`<html>
 							  <head>
 								<title>400 Bad Request</title>
@@ -36,7 +39,7 @@ func main() {
 			w.WriteHeaders(headers)
 			w.WriteBody(body)
 
-		case "/myproblem":
+		case strings.HasPrefix(req.RequestLine.RequestTarget, "/myproblem"):
 			body := []byte(`<html>
 							  <head>
 								<title>500 Internal Server Error</title>
@@ -53,6 +56,46 @@ func main() {
 			w.WriteStatusLine(response.Code500)
 			w.WriteHeaders(headers)
 			w.WriteBody(body)
+
+		case strings.HasPrefix(req.RequestLine.RequestTarget, "/httpbin"):
+			path := strings.TrimPrefix(req.RequestLine.RequestTarget, "/httpbin")
+			link := "https://httpbin.org" + path
+
+			println(link)
+
+			resp, err := http.Get(link)
+			if err != nil {
+				w.WriteStatusLine(response.Code500)
+				return
+			}
+			defer resp.Body.Close()
+
+			headers := response.GetDefaultHeaders(0)
+			headers.Del("content-length")
+			headers.Set("transfer-encoding", "chunked")
+
+			w.WriteStatusLine(response.Code200)
+			w.WriteHeaders(headers)
+
+			buf := make([]byte, 1024)
+
+			for {
+				n, err := resp.Body.Read(buf)
+				if n > 0 {
+					w.WriteChunkedBody(buf[:n])
+					log.Println("forwarding", n, "bytes")
+				}
+
+				if err == io.EOF {
+					break
+				}
+				if err != nil {
+					return
+				}
+			}
+
+			w.WriteChunkedBodyDone()
+			return
 
 		default:
 			body := []byte(`<html>

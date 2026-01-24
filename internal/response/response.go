@@ -115,3 +115,45 @@ func NewWriter(out io.Writer) *Writer {
 		writerStatus: stateInit,
 	}
 }
+
+func (w *Writer) WriteChunkedBody(p []byte) (int, error) {
+
+	if w.writerStatus != stateHeadersWritten && w.writerStatus != stateBodyWritten {
+		return 0, errors.New("status line must be written before body")
+	}
+
+	sizeLineHex := strconv.FormatInt(int64(len(p)), 16) + "\r\n"
+
+	_, err := w.out.Write([]byte(sizeLineHex))
+	if err != nil {
+		return 0, err
+	}
+
+	write, err := w.out.Write(p)
+	if err != nil {
+		return 0, err
+	}
+
+	_, err = w.out.Write([]byte("\r\n"))
+	if err != nil {
+		return 0, err
+	}
+	w.writerStatus = stateBodyWritten
+
+	return write, nil
+}
+
+func (w *Writer) WriteChunkedBodyDone() (int, error) {
+
+	if w.writerStatus != stateHeadersWritten {
+		return 0, errors.New("status line must be written before body")
+	}
+
+	w.writerStatus = stateBodyWritten
+	write, err := w.out.Write([]byte("0\r\n\r\n"))
+	if err != nil {
+		return 0, err
+	}
+
+	return write, nil
+}
