@@ -62,6 +62,19 @@ func main() {
 			w.WriteHeaders(headers)
 			w.WriteBody(body)
 
+		case strings.HasPrefix(req.RequestLine.RequestTarget, "/video"):
+
+			data, err := os.ReadFile("assets/vim.mp4")
+			if err != nil {
+				log.Fatal(err)
+			}
+			hdrs := response.GetDefaultHeaders(len(data))
+			hdrs.Set("content-type", "video/mp4")
+
+			w.WriteStatusLine(response.Code200)
+			w.WriteHeaders(hdrs)
+			w.WriteBody(data)
+
 		case strings.HasPrefix(req.RequestLine.RequestTarget, "/httpbin"):
 			path := strings.TrimPrefix(req.RequestLine.RequestTarget, "/httpbin")
 			link := "https://httpbin.org" + path
