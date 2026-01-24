@@ -1,6 +1,10 @@
 package main
 
 import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
+	"httpfromtcp/internal/headers"
 	"httpfromtcp/internal/request"
 	"httpfromtcp/internal/response"
 	"httpfromtcp/server"
@@ -9,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 )
@@ -70,18 +75,20 @@ func main() {
 			}
 			defer resp.Body.Close()
 
-			headers := response.GetDefaultHeaders(0)
-			headers.Del("content-length")
-			headers.Set("transfer-encoding", "chunked")
+			hdrs := response.GetDefaultHeaders(0)
+			hdrs.Del("content-length")
+			hdrs.Set("Trailer", "X-Content-SHA256, X-Content-Length")
 
 			w.WriteStatusLine(response.Code200)
-			w.WriteHeaders(headers)
+			w.WriteHeaders(hdrs)
 
 			buf := make([]byte, 1024)
+			var fullBody bytes.Buffer
 
 			for {
 				n, err := resp.Body.Read(buf)
 				if n > 0 {
+					fullBody.Write(buf[:n])
 					w.WriteChunkedBody(buf[:n])
 					log.Println("forwarding", n, "bytes")
 				}
@@ -94,7 +101,15 @@ func main() {
 				}
 			}
 
+			hash := sha256.Sum256(fullBody.Bytes())
+			length := fullBody.Len()
+
 			w.WriteChunkedBodyDone()
+			w.WriteTrailers(headers.Headers{
+				"X-Content-SHA256": hex.EncodeToString(hash[:]),
+				"X-Content-Length": strconv.Itoa(length),
+			})
+
 			return
 
 		default:

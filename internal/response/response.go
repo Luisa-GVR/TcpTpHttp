@@ -150,10 +150,33 @@ func (w *Writer) WriteChunkedBodyDone() (int, error) {
 	}
 
 	w.writerStatus = stateBodyWritten
-	write, err := w.out.Write([]byte("0\r\n\r\n"))
+	write, err := w.out.Write([]byte("0\r\n"))
 	if err != nil {
 		return 0, err
 	}
 
 	return write, nil
+}
+
+func (w *Writer) WriteTrailers(h headers.Headers) error {
+	if w.writerStatus != stateBodyWritten {
+		return errors.New("body must be written before trailers")
+	}
+
+	for k, v := range h {
+		line := k + ": " + v + "\r\n"
+		if _, err := w.out.Write([]byte(line)); err != nil {
+			return err
+		}
+	}
+
+	if _, err := w.out.Write([]byte("\r\n")); err != nil {
+		return err
+	}
+
+	w.writerStatus = stateHeadersWritten
+
+	_, err := w.out.Write([]byte("\r\n"))
+	return err
+
 }
